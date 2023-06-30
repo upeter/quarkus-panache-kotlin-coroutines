@@ -48,8 +48,8 @@ class FruitResourceCo {
     @Path("{id}")
     suspend fun update(id: Long, fruit: Fruit): Response = withTransaction {
         Fruit.findById(id).awaitSuspending()?.let { entity: Fruit ->
-            entity.apply { name = fruit.name }.persist<Fruit>().awaitSuspending()
-            }.let { Response.ok(it).build() }
+            entity.apply { name = fruit.name }.persist<Fruit>().awaitSuspending().let { Response.ok(it).build() }
+            }
         } ?: Response.ok().status(Response.Status.NOT_FOUND).build()
 
 
