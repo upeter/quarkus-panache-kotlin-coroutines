@@ -32,40 +32,36 @@ class FruitResource {
     }
 
     @POST
-    fun create(fruit: Fruit?): Uni<Response> {
+    fun create(fruit: Fruit?): Uni<Response> =
         if (fruit == null || fruit.id != null) {
             throw WebApplicationException("Id was invalidly set on request.", 422)
+        } else Panache.withTransaction(fruit::persist).replaceWith {
+            Response.ok(fruit).status(Response.Status.CREATED).build()
         }
-        return Panache.withTransaction(fruit::persist).replaceWith {
-                Response.ok(fruit).status(Response.Status.CREATED).build()
-            }
-    }
+
 
     @PUT
     @Path("{id}")
-    fun update(id: Long, fruit: Fruit): Uni<Response> {
-        return Panache.withTransaction {
-            Fruit.findById(id).flatMap {
-                it?.let { entity: Fruit ->
-                    entity.name = fruit.name
-                    entity.persist<Fruit>().map { Response.ok(entity).build() }
-                } ?: uni { Response.ok().status(Response.Status.NOT_FOUND).build() }
-            }
+    fun update(id: Long, fruit: Fruit): Uni<Response> = Panache.withTransaction {
+        Fruit.findById(id).flatMap {
+            it?.let { entity: Fruit ->
+                entity.apply { name = fruit.name }
+                    .persist<Fruit>()
+                    .map { Response.ok(entity).build() }
+            } ?: uni { Response.ok().status(Response.Status.NOT_FOUND).build() }
         }
     }
 
     @DELETE
     @Path("{id}")
-    fun delete(id: Long): Uni<Response> {
-        return Panache.withTransaction {
-            Fruit.deleteById(id)
-                .map { deleted ->
-                    if (deleted) Response.ok().status(Response.Status.NO_CONTENT)
-                        .build() else Response.ok().status(Response.Status.NOT_FOUND)
-                        .build()
-                }
-        }
+    fun delete(id: Long): Uni<Response> = Panache.withTransaction {
+        Fruit.deleteById(id)
+            .map { deleted ->
+                if (deleted) Response.ok().status(Response.Status.NO_CONTENT).build()
+                else Response.ok().status(Response.Status.NOT_FOUND).build()
+            }
     }
+
 
     /**
      * Create a HTTP response from an exception.
@@ -90,26 +86,16 @@ class FruitResource {
         lateinit var objectMapper: ObjectMapper
         override fun toResponse(exception: Exception): Response {
             LOGGER.error("Failed to handle request", exception)
-            var throwable: Throwable = exception
-            var code = 500
-            if (throwable is WebApplicationException) {
-                code = (exception as WebApplicationException).response.status
-            }
-
             // This is a Mutiny exception and it happens, for example, when we try to insert a new
             // fruit but the name is already in the database
-            if (throwable is CompositeException) {
-                throwable = throwable.cause!!
-            }
-            val exceptionJson: ObjectNode = objectMapper.createObjectNode()
-            exceptionJson.put("exceptionType", throwable.javaClass.name)
-            exceptionJson.put("code", code)
-            if (exception.message != null) {
-                exceptionJson.put("error", throwable.message)
-            }
-            return Response.status(code)
-                .entity(exceptionJson)
-                .build()
+            val throwable: Throwable = (exception as? CompositeException)?.cause ?: exception
+            val code =
+                if (throwable is WebApplicationException) (exception as WebApplicationException).response.status else 500
+            return with(objectMapper.createObjectNode()) {
+                put("exceptionType", throwable.javaClass.name)
+                put("code", code)
+                put("error", throwable.message)
+            }.let { Response.status(code).entity(it).build() }
         }
     }
 
