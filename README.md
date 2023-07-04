@@ -1,42 +1,10 @@
 # Quarkus Panache Reactive Coroutines
 
 
-## Possible workaround for missing `@WithTransaction` functionality for suspend endpoints
+## Start of a possible workaround for missing `@WithTransaction` functionality for suspend endpoints
 
-According to issue: https://github.com/quarkusio/quarkus/issues/34101 `@WithTransaction` does not work with `suspend` endpoints. 
+See: https://github.com/quarkusio/quarkus/issues/34101 `@WithTransaction` does not work with `suspend` endpoints. 
 
-After some trials I came up with a solution that 'might' work. 
-
-*Disclaimer:* though I dare to say that I'm quite experience with Kotlin, Reactive Programming, Coroutines, especially in the context of Springboot, I'm not a Quarkus expert. 
-I looked today at it for the first time (see initial commit)... 
-
-The solution is basically a simple piece of code that provides a transaction block, rather than an annotation. However, binding this code to an @Annotation is the least of the problems:
-```kotlin
-    @OptIn(ExperimentalCoroutinesApi::class)
-    suspend fun <T> withTransaction(block: suspend () -> T): T = Panache.withTransaction {
-            CoroutineScope(Dispatchers.Unconfined).async { block() }.asUni()
-        }.awaitSuspending()
-```
-
-The key here is the `Dispatchers.Unconfied`, which must use the current Thread for the Coroutine that is spawn in the async block. 
-Since a Panache transaction requires a `VertxThread` to work, which is always present when a `suspend` endpoint is called, this approach seems to work. 
-
-The `withTransaction` code-block can then be used as follows:
-```kotlin
-
- @POST
-    suspend fun create(fruit: Fruit): Response = withTransaction {
-            fruit.persist<Fruit>().awaitSuspending().let { Response.ok(it).status(Response.Status.CREATED).build() }
-        }
-    
-```
-
-
-The tests in this project are green with this approach. As reference, I also included a counterpart written in reactive code using standard mutiny. 
-
-If this code is production ready is uncertain. I don't use Quarkus in production, so I won't spend any more time on it to figure out whether this is a production solution or not. 
-
-So it's on your own risk ;-). 
 
 ## Running the application in dev mode
 
